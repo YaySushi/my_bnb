@@ -4,10 +4,6 @@ import java.sql.SQLException;
 import java.util.*;
 
 public class Driver {
-  public static final String dbName = "mybnb";
-  public static final String user = "root";
-
-  public static final String password = "password";
   private static Scanner scanner;
   private static DAO dao;
   private static User loggedInUser = null;
@@ -139,11 +135,10 @@ public class Driver {
     System.out.print("Enter Input: ");
     int input = scanner.nextInt();
 
-    boolean coordinateSearch = false;
     StringBuilder query = new StringBuilder();
 
     //build a big query progressively.
-    query.append("SELECT * FROM Listings NATURAL JOIN Addresses");
+    query.append("SELECT * FROM Listings NATURAL JOIN Addresses ");
 
     if (input == 2) {
       System.out.print("Enter latitude (-90.0 to 90.0) and longitude (-180.0 to 180.0): ");
@@ -158,7 +153,6 @@ public class Driver {
       query.append("WITH temp AS (SELECT *, ST_Distance_Sphere(point(" + lng + ", " + lat + "), " +
               "point(lng, lat)) as dist FROM Listings NATURAL JOIN Addresses) " +
               "SELECT * FROM temp WHERE dist <= " + distance + " ORDER BY dist");
-      coordinateSearch = true;
     } else if (input == 3) {
       System.out.print("Enter postal code (length >= 3): ");
       String postalcode = scanner.next().toLowerCase(Locale.ROOT).substring(0, 3);
@@ -176,16 +170,19 @@ public class Driver {
       query.append((" WHERE address='%s' AND city='%s' AND province='%s' AND country='%s'").formatted(address, city, province, country));
     }
 
+    return specSearch(query);
+  }
+  public static List<Listing> specSearch(StringBuilder query) throws SQLException {
+
     dao.deleteView("NoFilter");
     dao.deleteView("FilterDate");
     dao.deleteView("FilterPrice");
     dao.deleteView("FilterType");
     dao.deleteView("FilterAmenity");
-    dao.deleteView("SortPrice");
 
     dao.createView("NoFilter", query.toString());
 
-    StringBuilder query1 = new StringBuilder();
+    query = new StringBuilder();
 
     System.out.print("Filter by date range? (y/n): ");
     String response = scanner.next().trim().toLowerCase(Locale.ROOT);
@@ -196,14 +193,14 @@ public class Driver {
       System.out.print("Enter end date (YYYY-MM-DD): ");
       String enddate = scanner.next();
 
-      query1.append("SELECT * FROM NoFilter WHERE lid IN (SELECT L.lid FROM Listings L, Availabilities A " +
+      query.append("SELECT * FROM NoFilter WHERE lid IN (SELECT L.lid FROM Listings L, Availabilities A " +
               "WHERE L.lid=A.lid AND A.status='Available' AND " +
               "date BETWEEN '%s' AND '%s' ".formatted(startdate, enddate) +
               "GROUP BY L.lid HAVING COUNT(*)=DATEDIFF('%s', '%s')+1)".formatted(enddate, startdate));
-      dao.createView("FilterDate", query1.toString());
+      dao.createView("FilterDate", query.toString());
     } else dao.createView("FilterDate", "SELECT * FROM NoFilter");
 
-    StringBuilder query2 = new StringBuilder();
+    query = new StringBuilder();
 
     System.out.print("Filter by price range? (y/n): ");
     response = scanner.next();
@@ -214,13 +211,13 @@ public class Driver {
       System.out.print("Enter maximum price: $");
       Double max = scanner.nextDouble();
 
-      query2.append("SELECT * FROM FilterDate WHERE lid IN (SELECT L.lid FROM Listings L, Availabilities A "+
+      query.append("SELECT * FROM FilterDate WHERE lid IN (SELECT L.lid FROM Listings L, Availabilities A "+
               "WHERE L.lid=A.lid AND price BETWEEN " + min + " AND " + max + ")");
-      dao.createView("FilterPrice", query2.toString());
+      dao.createView("FilterPrice", query.toString());
     } else dao.createView("FilterPrice", "SELECT * FROM FilterDate");
 
 
-    StringBuilder query3 = new StringBuilder();
+    query = new StringBuilder();
 
     System.out.print("Filter by amenities offered? (y/n): ");
     response = scanner.next().toLowerCase(Locale.ROOT);
@@ -241,12 +238,12 @@ public class Driver {
       }
       set.append(")");
 
-      query3.append("SELECT * FROM FilterPrice WHERE lid IN (SELECT lid FROM Listings NATURAL JOIN has " +
+      query.append("SELECT * FROM FilterPrice WHERE lid IN (SELECT lid FROM Listings NATURAL JOIN has " +
               "WHERE amenity IN " + set + " GROUP BY lid HAVING COUNT(*)=" + amenities.length + ")");
-      dao.createView("FilterAmenity", query3.toString());
+      dao.createView("FilterAmenity", query.toString());
     } else dao.createView("FilterAmenity", "SELECT * FROM FilterPrice");
 
-    StringBuilder query4 = new StringBuilder();
+    query = new StringBuilder();
 
     System.out.print("Filter by type? (y/n): ");
     response = scanner.next();
@@ -254,20 +251,21 @@ public class Driver {
     if (response.equalsIgnoreCase("y")) {
       System.out.print("Enter type (Apartment, House, Guesthouse, Hotel, Other): ");
       String type = scanner.next().trim().toLowerCase(Locale.ROOT);
-      query4.append("SELECT * FROM FilterAmenity WHERE listingtype = '%s'".formatted(type));
-      dao.createView("FilterType", query4.toString());
+      query.append("SELECT * FROM FilterAmenity WHERE listingtype = '%s'".formatted(type));
+      dao.createView("FilterType", query.toString());
     } else dao.createView("FilterType", "SELECT * FROM FilterAmenity");
 
 
     ArrayList<Listing> listings;
+
     System.out.print("Rank by price? (asc/desc/n): ");
     String str = scanner.next().trim().toUpperCase(Locale.ROOT);
-    listings = dao.getListingsFromView("FilterType", str, coordinateSearch);
+    listings = dao.getListingsFromView("FilterType", str);
 
     for (int j = 0; j < listings.size(); j++) System.out.println(j + ") " + listings.get(j));
-
     return listings;
   }
+
   public static List<User> displayUsers() throws SQLException {
     List<User> users;
     if (loggedInUser.getClass() == Host.class) users = dao.getRentersForHost(loggedInUser.getUid());
@@ -431,7 +429,7 @@ public class Driver {
         String country = scanner.next().trim().toLowerCase(Locale.ROOT);
         System.out.print("Would you like to search by city as well? (y/n): ");
         String city = optionalResponse("city");
-        // TODO: Should we ask for postal code if city not specified?
+
         System.out.print("Would you like to search by postal code as well? (y/n): ");
         String postalCode = optionalResponse("postal code");
 
@@ -465,7 +463,6 @@ public class Driver {
         String country = scanner.next().trim().toLowerCase(Locale.ROOT);
         System.out.print("Would you like to search by city as well? (y/n): ");
         String city = optionalResponse("city");
-        System.out.println(country + " " + city);
 
         ArrayList<Map<String, Object>> hostsTenPercent = dao.getHostsWithMoreThanTenPercent(country, city);
         if (hostsTenPercent.isEmpty()) {
@@ -546,74 +543,81 @@ public class Driver {
 
   public static void hostToolkit(int lid, String type, String city, String province, String country, String postalcode) {
     try {
-      String star = "*";
-      System.out.println(star.repeat(50));
+      System.out.println("============ Host Toolkit ==============");
       List<Amenity> offered = dao.getAmenitiesListByLID(lid);
-      double price = getAvgPriceOfListings(type, offered, city, province, country, true);
+      double price = getPriceRecc(type, offered, city, province, country);
       if (price <= 0) {
-        System.out.println("No recommend price found");
+        System.out.println("We could not find a suitable price recommendation.");
       } else {
-        System.out.println("Recommended price: " + price);
+        System.out.println("We recommend a price of: $" + price);
       }
-      price = getAvgPriceOfListings(type, offered, city, province, country, false);
+
+      // average price of a listing with at least the offered amenities
+      price = getAvgPriceWithAmenities(type, offered, city, province, country);
       Amenity topEssential = dao.getTopNewEssential(offered);
       Amenity topUncommonFeature = dao.getTopUncommonFeature(offered);
 
       if (topEssential == null) System.out.println("No essentials to recommend");
       else {
-        System.out.println("Consider adding the following essential/safety: ");
-        recommendAmenity(topEssential, offered, type, city, province, country, price);
+        System.out.println("Consider adding the following essential/safety amenity: " + topEssential.getAmenity());
+
+        //calculate price difference.
+        offered.add(topEssential);
+        double newPrice = getAvgPriceWithAmenities(type, offered, city, province, country);
+        double priceIncrease = newPrice - price;
+        if (priceIncrease > 0) System.out.println("...with price increase of " + priceIncrease);
       }
 
       if (topUncommonFeature == null) System.out.println("No features to recommend");
       else {
-        System.out.println("Consider adding the following feature: ");
-        recommendAmenity(topUncommonFeature, offered, type, city, province, country, price);
+        System.out.println("Consider adding the following feature amenity: " + topUncommonFeature.getAmenity());
+
+        //calculate price difference.
+        offered.add(topUncommonFeature);
+        double newPrice = getAvgPriceWithAmenities(type, offered, city, province, country);
+        double priceIncrease = newPrice - price;
+        if (priceIncrease > 0) System.out.println("...with price increase of " + priceIncrease);
       }
-      System.out.println(star.repeat(50));
+      System.out.println("=========================================");
     } catch (SQLException e) {
       e.printStackTrace();
       System.out.println("Something went wrong trying to recommend listings");
     }
   }
 
-  public static void recommendAmenity(Amenity newamenity, List<Amenity> offered, String type, String city,
-                                        String province, String country, double price) throws SQLException {
-    offered.add(newamenity);
-    double newPrice = getAvgPriceOfListings(type, offered, city, province, country, false);
-    double priceIncrease = newPrice - price;
-    System.out.println(newamenity.getAmenity());
-    if (priceIncrease > 0) System.out.println("   with price increase of " + priceIncrease);
-  }
-
-
-  public static double getAvgPriceOfListings(String type, List<Amenity> offered,
-                                             String city, String province, String country,
-                                             boolean recommendPrice) throws SQLException {
-    // try looking at listings at all specified parameters
+  public static double getPriceRecc(String type, List<Amenity> offered,
+                                    String city, String province, String country) throws SQLException {
     double price;
+
+    // try looking at listings at all specified parameters
     price = dao.avgPriceOfListings(type, offered, country, province, city);
     if (price > 0) return price;
-    if (recommendPrice) {
-      price = dao.avgPriceOfListings(type, new ArrayList<>(), country, province, city);
-      if (price > 0) return price;
-    }
 
     // otherwise look at listings ignoring the city
     price = dao.avgPriceOfListings(type, offered, country, province, "%");
     if (price > 0) return price;
-    if (recommendPrice) {
-      price = dao.avgPriceOfListings(type, new ArrayList<>(), country, province, "%");
-      if (price > 0) return price;
-    }
 
     // otherwise look at listings ignoring the city and province.
     price = dao.avgPriceOfListings(type, offered, country, "%", "%");
     if (price > 0) return price;
-    if (recommendPrice) {
-      price = dao.avgPriceOfListings(type, new ArrayList<>(), country, "%", "%");
-      if (price > 0) return price;
-    }
+
+    return 0;
+  }
+
+  public static double getAvgPriceWithAmenities(String type, List<Amenity> offered,
+                                             String city, String province, String country) throws SQLException {
+    // try looking at listings at all specified parameters
+    double price;
+    price = dao.avgPriceOfListings(type, offered, country, province, city);
+    if (price > 0) return price;
+
+    // otherwise look at listings ignoring the city
+    price = dao.avgPriceOfListings(type, offered, country, province, "%");
+    if (price > 0) return price;
+
+    // otherwise look at listings ignoring the city and province.
+    price = dao.avgPriceOfListings(type, offered, country, "%", "%");
+    if (price > 0) return price;
     return price;
   }
 
@@ -629,12 +633,12 @@ public class Driver {
 
       // loop to get user input
       while (true) {
-        System.out.println("Select type of amenity (-1 to exit):");
+        System.out.println("Select the type of amenity (-1 to exit):");
         System.out.println("1. Essentials");
         System.out.println("2. Features");
         System.out.println("3. Location");
         System.out.println("4. Safety");
-        System.out.println("5. View host toolkit");
+        System.out.println("5. View host toolkit for suggestions");
 
         int input = scanner.nextInt();
         scanner.nextLine();
@@ -803,8 +807,6 @@ public class Driver {
         return false;
       }
 
-      scanner.nextLine();
-
       System.out.print("First name: ");
       String firstname = scanner.nextLine();
 
@@ -956,7 +958,7 @@ public class Driver {
 
   public static void main(String[] args) {
     try {
-      dao = new DAO(dbName, user, password);
+      dao = new DAO("mybnb", "root", "password");
       scanner = new Scanner(System.in);
       boolean isLoggedIn = false;
 

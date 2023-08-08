@@ -322,15 +322,15 @@ public class DAO {
     stmt.executeUpdate();
   }
 
-  public ArrayList<Listing> getListingsFromView(String view, String str, boolean coordinateSearch) throws SQLException {
+  public ArrayList<Listing> getListingsFromView(String view, String str) throws SQLException {
     PreparedStatement stmt;
 
     if (str.equals("ASC") || str.equals("DESC")) {
-      stmt = conn.prepareStatement("SELECT L.*, AVG(price) AS price FROM "+view+" L, Availabilities A " +
+      stmt = conn.prepareStatement("SELECT L.*, AVG(price) AS price FROM " + view + " L, Availabilities A " +
               "WHERE L.lid=A.lid GROUP BY L.lid ORDER BY price " + str);
     } else {
-      stmt = conn.prepareStatement("(SELECT L.*, AVG(price) AS price FROM "+view+" L, Availabilities A " +
-              "WHERE L.lid=A.lid GROUP BY L.lid) UNION (SELECT L.*, -1 AS price FROM "+view+" L, Availabilities A " +
+      stmt = conn.prepareStatement("(SELECT L.*, AVG(price) AS price FROM " + view + " L, Availabilities A " +
+              "WHERE L.lid=A.lid GROUP BY L.lid) UNION (SELECT L.*, -1 AS price FROM " + view + " L, Availabilities A " +
               "WHERE L.lid NOT IN (SELECT lid FROM Availabilities))");
     }
 
@@ -338,7 +338,7 @@ public class DAO {
     ArrayList<Listing> result = new ArrayList<>();
     while(rs.next()) {
       int lid = rs.getInt("lid");
-      String type = rs.getString("listingtype");
+      String listingtype = rs.getString("listingtype");
       double lat = rs.getDouble("lat");
       double lng = rs.getDouble("lng");
 
@@ -350,27 +350,16 @@ public class DAO {
       String postalCode = rs.getString("postalcode");
 
       Address newAddress = new Address(aid, address, city, province, country, postalCode);
-
-      // todo: what happens with aux here?
-      double price = rs.getDouble("price");
-      String aux = price == -1 ? "" : "Price: " + price;
-
-
-      if (coordinateSearch) {
-        aux += " Distance: " + rs.getDouble("distance");
-      }
-
-      result.add(new Listing(lid, type, lat, lng, newAddress));
+      result.add(new Listing(lid, listingtype, lat, lng, newAddress));
     }
     return result;
   }
   public Listing getListingFromID(int lid) throws SQLException {
-    PreparedStatement stmt = conn.prepareStatement("SELECT * FROM Listings " +
-            "NATURAL JOIN Addresses WHERE lid=?");
+    PreparedStatement stmt = conn.prepareStatement("SELECT * FROM Listings  NATURAL JOIN Addresses WHERE lid=?");
     stmt.setInt(1, lid);
     ResultSet rs = stmt.executeQuery();
     if (rs.next()) {
-      String type = rs.getString("listingtype");
+      String listingtype = rs.getString("listingtype");
       double lat = rs.getDouble("lat");
       double lng = rs.getDouble("lng");
 
@@ -382,7 +371,7 @@ public class DAO {
       String postalcode = rs.getString("postalcode");
 
       Address newAddress = new Address(aid, address, city, province, country, postalcode);
-      return new Listing(lid, type, lat, lng, newAddress);
+      return new Listing(lid, listingtype, lat, lng, newAddress);
     }
     return null;
   }
@@ -518,7 +507,7 @@ public class DAO {
   }
   public List<Booking> getRentersBookings(String status, int rid) throws SQLException {
     PreparedStatement stmt;
-    if (status.equals("future")) stmt = conn.prepareStatement("SELECT * FROM Bookings WHERE startdate > CURDATE() AND rid = ? AND cancelled = false");
+    if (status.equals("future")) stmt = conn.prepareStatement("SELECT * FROM Bookings WHERE startdate > CURDATE() AND rid = ?");
     else if (status.equals("past")) stmt = conn.prepareStatement("SELECT * FROM Bookings WHERE enddate <= CURDATE() AND rid = ?");
     else stmt = conn.prepareStatement("SELECT * FROM Bookings WHERE cancelled = true AND rid = ?");
     stmt.setInt(1, rid);
@@ -590,9 +579,7 @@ public class DAO {
     PreparedStatement stmt = conn.prepareStatement("SELECT * FROM Users WHERE uid = ?");
     stmt.setInt(1, uid);
     ResultSet rs = stmt.executeQuery();
-    if (rs.next()) {
-      return resultToUser(rs);
-    }
+    if (rs.next()) return resultToUser(rs);
     return null;
   }
 
@@ -634,8 +621,8 @@ public class DAO {
       throw new IllegalArgumentException("Null argument");
     }
     StringBuilder query = new StringBuilder("CREATE OR REPLACE VIEW country_listings AS " +
-            "SELECT * FROM " +
-            "Listings NATURAL JOIN Addresses " +
+            "SELECT Listings.hid, country FROM " +
+            "Listings JOIN Addresses ON Listings.aid = Addresses.aid " +
             "WHERE country = ?");
     if (city != null) {
       query.append(" AND city = ?");
@@ -885,12 +872,12 @@ public class DAO {
     String set = amenitiesListToString(amenities);
     PreparedStatement stmt = null;
     if (amenities.isEmpty()) {
-      stmt = conn.prepareStatement("WITH " +
-              "filter AS " +
-              "(SELECT lid FROM Listings NATURAL JOIN Addresses WHERE listingtype = ? AND country LIKE ? AND province LIKE ? AND city LIKE ?), " +
-              "temp AS " +
-              "(SELECT AVG(price) AS price FROM Availabilities WHERE lid IN (SELECT * FROM filter) GROUP BY lid) " +
-              "SELECT AVG(price) AS answer FROM temp");
+        stmt = conn.prepareStatement("WITH " +
+                "filter AS " +
+                "(SELECT lid FROM Listings NATURAL JOIN Addresses WHERE listingtype = ? AND country LIKE ? AND province LIKE ? AND city LIKE ?), " +
+                "temp AS " +
+                "(SELECT AVG(price) AS price FROM Availabilities WHERE lid IN (SELECT * FROM filter) GROUP BY lid) " +
+                "SELECT AVG(price) AS answer FROM temp");
     } else {
       stmt = conn.prepareStatement("WITH " +
               "filterlistings AS " +

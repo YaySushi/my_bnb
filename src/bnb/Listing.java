@@ -24,6 +24,6 @@ public class Listing {
 
   @Override
   public String toString() {
-    return listingtype + " at " + address;
+    return listingtype + " at " + address + " (with lid = " + lid + ")";
   }
 }
